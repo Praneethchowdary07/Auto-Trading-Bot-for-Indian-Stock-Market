@@ -94,3 +94,41 @@ def latest_signal(df: pd.DataFrame) -> dict:
             "time": events.index[-1].strftime("%d %b %Y, %H:%M"),
         },
     }
+
+
+def build_payload(df: pd.DataFrame, symbol: str, interval: str, max_points: int = 400) -> dict:
+    """JSON-ready dashboard data: chart series, crossover events, latest signal, backtest stats."""
+    bt = backtest(df)
+    view = df[df["SMA_long"].notna()].tail(max_points)
+    fmt = "%d %b %H:%M" if interval == "1h" else "%d %b %Y"
+    labels = [ts.strftime(fmt) for ts in view.index]
+
+    def col(name):
+        return [round(float(v), 2) for v in view[name]]
+
+    events = [
+        {"i": i, "type": e, "price": round(float(p), 2), "time": labels[i]}
+        for i, (e, p) in enumerate(zip(view["Event"], view["Close"]))
+        if e
+    ]
+    eq = bt["equity"].reindex(view.index)
+    return {
+        "symbol": symbol,
+        "name": SYMBOLS.get(symbol, symbol),
+        "interval": interval,
+        "labels": labels,
+        "close": col("Close"),
+        "sma_short": col("SMA_short"),
+        "sma_long": col("SMA_long"),
+        "events": events,
+        "equity_strategy": [round(float(v), 4) for v in eq["Equity_strategy"]],
+        "equity_hold": [round(float(v), 4) for v in eq["Equity_hold"]],
+        "latest": latest_signal(df),
+        "stats": {k: bt[k] for k in ("strategy_return", "buy_hold_return", "trades", "win_rate", "max_drawdown")},
+    }
+
+
+def signal_log(df: pd.DataFrame) -> pd.DataFrame:
+    log = df[df["Event"] != ""][["Event", "Close", "SMA_short", "SMA_long"]].round(2)
+    log.index.name = "Time"
+    return log

@@ -44,34 +44,7 @@ def api_signals():
     except Exception as exc:  # network errors, bad symbol, empty data
         return jsonify(error=str(exc)), 502
 
-    bt = st.backtest(df)
-    view = df[df["SMA_long"].notna()].tail(400)
-    fmt = "%d %b %H:%M" if interval == "1h" else "%d %b %Y"
-    labels = [ts.strftime(fmt) for ts in view.index]
-
-    def col(name):
-        return [round(float(v), 2) for v in view[name]]
-
-    events = [
-        {"i": i, "type": e, "price": round(float(p), 2), "time": labels[i]}
-        for i, (e, p) in enumerate(zip(view["Event"], view["Close"]))
-        if e
-    ]
-    eq = bt["equity"].reindex(view.index)
-    return jsonify(
-        symbol=symbol,
-        name=st.SYMBOLS[symbol],
-        interval=interval,
-        labels=labels,
-        close=col("Close"),
-        sma_short=col("SMA_short"),
-        sma_long=col("SMA_long"),
-        events=events,
-        equity_strategy=[round(float(v), 4) for v in eq["Equity_strategy"]],
-        equity_hold=[round(float(v), 4) for v in eq["Equity_hold"]],
-        latest=st.latest_signal(df),
-        stats={k: bt[k] for k in ("strategy_return", "buy_hold_return", "trades", "win_rate", "max_drawdown")},
-    )
+    return jsonify(st.build_payload(df, symbol, interval))
 
 
 @app.get("/api/signals.csv")
@@ -81,10 +54,8 @@ def api_csv():
         df = load(symbol, interval)
     except Exception as exc:
         return Response(str(exc), status=502)
-    log = df[df["Event"] != ""][["Event", "Close", "SMA_short", "SMA_long"]].round(2)
-    log.index.name = "Time"
     buf = io.StringIO()
-    log.to_csv(buf)
+    st.signal_log(df).to_csv(buf)
     fname = f"signals_{symbol.replace('^', '')}_{interval}.csv"
     return Response(buf.getvalue(), mimetype="text/csv",
                     headers={"Content-Disposition": f"attachment; filename={fname}"})
