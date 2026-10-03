@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light" />
+  <title>Nifty 50 SMA Trading Bot</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="logo">↗</span><span>Nifty Trading Bot</span></div>
+    <a href="https://github.com/Praneethchowdary07/Auto-Trading-Bot-for-Indian-Stock-Market" target="_blank" rel="noreferrer">Source on GitHub</a>
+  </header>
+
+  <main class="main">
+    <section class="intro">
+      <h1>SMA crossover signals for Indian markets</h1>
+      <p>Buy when the 20-period moving average crosses above the 50-period average, sell when it crosses below. Data from Yahoo Finance, refreshed hourly during NSE market hours. <span id="updated"></span></p>
+    </section>
+
+    <section class="card controls">
+      <label>Instrument
+        <select id="symbol">
+          <option value="^NSEI">Nifty 50 (^NSEI)</option><option value="^NSEBANK">Nifty Bank (^NSEBANK)</option><option value="RELIANCE.NS">Reliance Industries (RELIANCE.NS)</option><option value="TCS.NS">Tata Consultancy Services (TCS.NS)</option><option value="INFY.NS">Infosys (INFY.NS)</option><option value="HDFCBANK.NS">HDFC Bank (HDFCBANK.NS)</option>
+        </select>
+      </label>
+      <label>Timeframe
+        <div class="seg" id="interval">
+          <button data-v="1h" class="active">Hourly</button>
+          <button data-v="1d">Daily</button>
+        </div>
+      </label>
+      <div class="spacer"></div>
+      <a class="btn" id="csv" href="#">Download CSV log</a>
+      <button class="btn primary" id="refresh">Refresh</button>
+    </section>
+
+    <div id="status"></div>
+
+    <div id="content" hidden>
+      <section class="grid">
+        <div class="card stat">
+          <div class="label">Current signal</div>
+          <div class="value"><span class="badge" id="sig"></span></div>
+          <div class="sub" id="sigsub"></div>
+        </div>
+        <div class="card stat">
+          <div class="label">Last price</div>
+          <div class="value" id="price"></div>
+          <div class="sub" id="smas"></div>
+        </div>
+        <div class="card stat">
+          <div class="label">Strategy return</div>
+          <div class="value" id="ret"></div>
+          <div class="sub" id="hold"></div>
+        </div>
+        <div class="card stat">
+          <div class="label">Trades · Win rate</div>
+          <div class="value" id="trades"></div>
+          <div class="sub" id="dd"></div>
+        </div>
+      </section>
+
+      <section class="card" style="margin-top:18px">
+        <h3 id="charttitle">Price &amp; moving averages</h3>
+        <div class="legend">
+          <span style="--c:#98a2b3">Close</span>
+          <span style="--c:#4f7cff">SMA 20</span>
+          <span style="--c:#f79009">SMA 50</span>
+          <span class="dot" style="--c:#12b76a">Buy</span>
+          <span class="dot" style="--c:#f04438">Sell</span>
+        </div>
+        <div class="chart" id="price-chart"></div>
+      </section>
+
+      <section class="card" style="margin-top:18px">
+        <h3>Backtest — growth of ₹1</h3>
+        <div class="legend">
+          <span style="--c:#4f7cff">SMA strategy</span>
+          <span style="--c:#98a2b3">Buy &amp; hold</span>
+        </div>
+        <div class="chart" id="equity-chart"></div>
+      </section>
+
+      <section class="card" style="margin-top:18px">
+        <h3>Recent crossover signals</h3>
+        <div class="table-wrap">
+          <table><thead><tr><th>Time</th><th>Signal</th><th>Price</th></tr></thead><tbody id="rows"></tbody></table>
+        </div>
+      </section>
+    </div>
+
+    <p class="disclaimer">For education and research only. Not financial advice.</p>
+  </main>
+  <footer class="foot">Python · Pandas · yfinance · GitHub Actions — built by Korrapati Praneeth Chowdary</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let interval = "1h";
+const inr = (v) => "₹" + v.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+const pct = (v) => (v >= 0 ? "+" : "") + (v * 100).toFixed(2) + "%";
+
+document.querySelectorAll("#interval button").forEach((b) =>
+  b.addEventListener("click", () => {
+    document.querySelectorAll("#interval button").forEach((x) => x.classList.remove("active"));
+    b.classList.add("active");
+    interval = b.dataset.v;
+    load();
+  })
+);
+$("symbol").addEventListener("change", load);
+$("refresh").addEventListener("click", load);
+
+async function load() {
+  const symbol = $("symbol").value;
+  const key = `${symbol.replace("^", "").replace(".", "_")}_${interval}`;
+  $("csv").href = `data/${key}.csv`;
+  $("csv").setAttribute("download", `signals_${key}.csv`);
+  $("status").innerHTML = '<div class="card loading"><div class="spin"></div>Fetching market data…</div>';
+  try {
+    const res = await fetch(`data/${key}.json`, { cache: "no-cache" });
+    const d = await res.json().catch(() => ({ error: "Data not available yet" }));
+    if (!res.ok || d.error) throw new Error(d.error || "Data not available yet");
+    $("updated").textContent = "Last updated " + new Date(d.generated_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) + ".";
+    render(d);
+    $("status").innerHTML = "";
+    $("content").hidden = false;
+  } catch (e) {
+    $("content").hidden = true;
+    $("status").innerHTML = `<div class="notice error">Couldn't load data: ${e.message}. Try again in a moment.</div>`;
+  }
+}
+
+function render(d) {
+  const L = d.latest, s = d.stats;
+  const sig = $("sig");
+  sig.textContent = L.signal;
+  sig.className = "badge " + (L.signal === "BUY" ? "buy" : "sell");
+  $("sigsub").textContent = L.last_cross
+    ? `Last ${L.last_cross.type.toLowerCase()} crossover ${L.last_cross.time}`
+    : "No crossover in this window";
+  $("price").textContent = inr(L.price);
+  $("smas").textContent = `SMA20 ${inr(L.sma_short)} · SMA50 ${inr(L.sma_long)} · ${L.as_of}`;
+  $("ret").textContent = pct(s.strategy_return);
+  $("ret").className = "value " + (s.strategy_return >= 0 ? "up" : "down");
+  $("hold").textContent = `Buy & hold ${pct(s.buy_hold_return)}`;
+  $("trades").textContent = `${s.trades} · ${s.win_rate === null ? "–" : Math.round(s.win_rate * 100) + "%"}`;
+  $("dd").textContent = `Max drawdown ${pct(s.max_drawdown)}`;
+  $("charttitle").textContent = `${d.name} — ${d.interval === "1h" ? "hourly" : "daily"} price & moving averages`;
+
+  lineChart($("price-chart"), d.labels, [
+    { data: d.close, color: "#98a2b3", width: 1.4, name: "Close" },
+    { data: d.sma_short, color: "#4f7cff", width: 2, name: "SMA 20" },
+    { data: d.sma_long, color: "#f79009", width: 2, name: "SMA 50" },
+  ], d.events, (v) => inr(v));
+  lineChart($("equity-chart"), d.labels, [
+    { data: d.equity_strategy, color: "#4f7cff", width: 2, name: "Strategy" },
+    { data: d.equity_hold, color: "#98a2b3", width: 1.6, name: "Buy & hold" },
+  ], [], (v) => "₹" + v.toFixed(3));
+
+  $("rows").innerHTML = d.events.slice().reverse().slice(0, 30).map((e) =>
+    `<tr><td>${e.time}</td><td><span class="badge ${e.type === "BUY" ? "buy" : "sell"}">${e.type}</span></td><td>${inr(e.price)}</td></tr>`
+  ).join("") || '<tr><td colspan="3">No crossovers in this window.</td></tr>';
+}
+
+// Minimal responsive SVG line chart with hover tooltip (no external libraries)
+function lineChart(el, labels, series, events, fmt) {
+  const W = 1000, H = 320, P = { l: 64, r: 12, t: 10, b: 28 };
+  const all = series.flatMap((s) => s.data).filter((v) => v != null);
+  let lo = Math.min(...all), hi = Math.max(...all);
+  const pad = (hi - lo) * 0.06 || 1; lo -= pad; hi += pad;
+  const n = labels.length;
+  const x = (i) => P.l + (i / Math.max(1, n - 1)) * (W - P.l - P.r);
+  const y = (v) => P.t + (1 - (v - lo) / (hi - lo)) * (H - P.t - P.b);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img">`;
+  for (let k = 0; k <= 4; k++) {
+    const v = lo + ((hi - lo) * k) / 4, yy = y(v);
+    svg += `<line x1="${P.l}" x2="${W - P.r}" y1="${yy}" y2="${yy}" stroke="#eaecf0"/>`;
+    svg += `<text x="${P.l - 8}" y="${yy + 4}" text-anchor="end" font-size="11" fill="#98a2b3">${fmt(v)}</text>`;
+  }
+  const ticks = 6;
+  for (let k = 0; k < ticks; k++) {
+    const i = Math.round((k / (ticks - 1)) * (n - 1));
+    svg += `<text x="${x(i)}" y="${H - 8}" text-anchor="${k === 0 ? "start" : k === ticks - 1 ? "end" : "middle"}" font-size="11" fill="#98a2b3">${labels[i] || ""}</text>`;
+  }
+  for (const s of series) {
+    const pts = s.data.map((v, i) => (v == null ? null : `${x(i).toFixed(1)},${y(v).toFixed(1)}`)).filter(Boolean);
+    svg += `<polyline fill="none" stroke="${s.color}" stroke-width="${s.width}" stroke-linejoin="round" vector-effect="non-scaling-stroke" points="${pts.join(" ")}"/>`;
+  }
+  for (const e of events) {
+    svg += `<circle cx="${x(e.i)}" cy="${y(e.price)}" r="4.5" fill="${e.type === "BUY" ? "#12b76a" : "#f04438"}" stroke="#fff" stroke-width="1.5"/>`;
+  }
+  svg += `<line class="cursor" x1="0" x2="0" y1="${P.t}" y2="${H - P.b}" stroke="#d0d5dd" stroke-dasharray="3 3" visibility="hidden"/>`;
+  svg += `<rect class="hit" x="${P.l}" y="${P.t}" width="${W - P.l - P.r}" height="${H - P.t - P.b}" fill="transparent"/></svg>`;
+  el.innerHTML = svg + '<div class="tip"></div>';
+
+  const svgEl = el.querySelector("svg"), tip = el.querySelector(".tip"), cur = el.querySelector(".cursor");
+  svgEl.querySelector(".hit").addEventListener("mousemove", (ev) => {
+    const r = svgEl.getBoundingClientRect();
+    const vx = ((ev.clientX - r.left) / r.width) * W;
+    const i = Math.max(0, Math.min(n - 1, Math.round(((vx - P.l) / (W - P.l - P.r)) * (n - 1))));
+    cur.setAttribute("x1", x(i)); cur.setAttribute("x2", x(i)); cur.setAttribute("visibility", "visible");
+    tip.innerHTML = `<b>${labels[i]}</b><br>` + series.map((s) =>
+      `<span style="color:${s.color}">●</span> ${s.name}: ${s.data[i] == null ? "–" : fmt(s.data[i])}`).join("<br>");
+    tip.style.display = "block";
+    const px = (x(i) / W) * r.width;
+    tip.style.left = Math.min(px + 12, r.width - tip.offsetWidth) + "px";
+    tip.style.top = "8px";
+  });
+  svgEl.querySelector(".hit").addEventListener("mouseleave", () => { tip.style.display = "none"; cur.setAttribute("visibility", "hidden"); });
+}
+
+load();
+</script>
+</body>
+</html>
