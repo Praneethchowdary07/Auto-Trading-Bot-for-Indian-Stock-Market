@@ -7,6 +7,20 @@ This Auto-Trading Bot generates intelligent **Buy/Sell signals** for Nifty 50 us
 
 ---
 
+## 🌐 Live Web App
+
+**Live demo:** _add your Hugging Face Space link here_
+
+The `webapp/` folder is a Flask web app with a clean dashboard: pick Nifty 50, Nifty Bank or a large-cap NSE stock,
+switch hourly/daily, and see the current signal, SMA 20/50 chart with crossover points, a long-only backtest
+(strategy vs buy & hold, trades, win rate, max drawdown) and a downloadable CSV signal log.
+
+```bash
+cd webapp && pip install -r requirements.txt && python app.py   # http://localhost:7860
+```
+
+> 🔐 Telegram alerts now read `TELEGRAM_TOKEN` and `CHAT_ID` from environment variables — never commit them.
+
 ## 🔧 How It Works
 
 This bot automates signal generation using the following logic:
