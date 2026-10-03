@@ -7,19 +7,18 @@ This Auto-Trading Bot generates intelligent **Buy/Sell signals** for Nifty 50 us
 
 ---
 
-## 🌐 Live Web App
+## 🌐 Live Dashboard
 
-**Live demo:** _add your Hugging Face Space link here_
+**Live demo:** https://praneethchowdary07.github.io/Auto-Trading-Bot-for-Indian-Stock-Market/
 
-The `webapp/` folder is a Flask web app with a clean dashboard: pick Nifty 50, Nifty Bank or a large-cap NSE stock,
-switch hourly/daily, and see the current signal, SMA 20/50 chart with crossover points, a long-only backtest
-(strategy vs buy & hold, trades, win rate, max drawdown) and a downloadable CSV signal log.
+A clean dashboard for Nifty 50, Nifty Bank and large-cap NSE stocks (hourly or daily): current signal, SMA 20/50 chart with
+crossover points, long-only backtest (strategy vs buy & hold, trades, win rate, max drawdown) and a downloadable CSV signal log.
 
-```bash
-cd webapp && pip install -r requirements.txt && python app.py   # http://localhost:7860
-```
+**How it runs (free, no server):** a GitHub Actions workflow (`.github/workflows/pages.yml`) runs every hour during NSE market
+hours, fetches data with yfinance, computes signals with `scripts/build_data.py` and publishes the static site in `site/` to GitHub Pages.
+The same logic is also available as a Flask app in `webapp/` (`cd webapp && pip install -r requirements.txt && python app.py`).
 
-> 🔐 Telegram alerts now read `TELEGRAM_TOKEN` and `CHAT_ID` from environment variables — never commit them.
+> 🔐 Telegram alerts read `TELEGRAM_TOKEN` and `CHAT_ID` from environment variables — never commit them.
 
 ## 🔧 How It Works
 
